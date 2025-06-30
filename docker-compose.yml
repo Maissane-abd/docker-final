@@ -1,0 +1,112 @@
+services:
+  # Base de données MySQL 
+  mysql:
+    image: mysql:8.0
+    container_name: mysql_db
+    environment:
+      MYSQL_ROOT_PASSWORD: rootpassword
+      MYSQL_DATABASE: laravel_db
+      MYSQL_USER: laravel_user
+      MYSQL_PASSWORD: laravel_password
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+    networks:
+      - laravel_network
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      timeout: 20s
+      retries: 10
+
+  # Service PHP-FPM 1
+  php1:
+    build:
+      context: .
+      dockerfile: dockerfiles/php/Dockerfile
+    container_name: php_app1
+    volumes:
+      - ./laravel-app:/var/www/html
+      - ./.env.server1:/var/www/html/.env
+      - ./entrypoint1.sh:/entrypoint.sh
+    depends_on:
+      mysql:
+        condition: service_healthy
+    networks:
+      - laravel_network
+    command: ["/entrypoint.sh"]
+
+  # Service PHP-FPM 2
+  php2:
+    build:
+      context: .
+      dockerfile: dockerfiles/php/Dockerfile
+    container_name: php_app2
+    volumes:
+      - ./laravel-app:/var/www/html
+      - ./.env.server2:/var/www/html/.env
+      - ./entrypoint2.sh:/entrypoint.sh
+    depends_on:
+      mysql:
+        condition: service_healthy 
+    networks:
+      - laravel_network
+    command: ["/entrypoint.sh"]
+
+
+  # Nginx 1
+  nginx1:
+    build:
+      context: .
+      dockerfile: dockerfiles/nginx/Dockerfile
+      args:
+        CONFIG_FILE: nginx1.conf
+    container_name: nginx_server1
+    ports:
+      - "8080:80"
+    volumes:
+      - ./laravel-app:/var/www/html
+    depends_on:
+      - php1
+    networks:
+      - laravel_network
+
+  # Nginx 2
+  nginx2:
+    build:
+      context: .
+      dockerfile: dockerfiles/nginx/Dockerfile
+      args:
+        CONFIG_FILE: nginx2.conf
+    container_name: nginx_server2
+    ports:
+      - "8081:80"
+    volumes:
+      - ./laravel-app:/var/www/html
+    depends_on:
+      - php2
+    networks:
+      - laravel_network
+
+  # PHPMyAdmin
+  phpmyadmin:
+    image: phpmyadmin/phpmyadmin
+    container_name: phpmyadmin
+    environment:
+      PMA_HOST: mysql
+      PMA_PORT: 3306
+      PMA_USER: laravel_user
+      PMA_PASSWORD: laravel_password
+    ports:
+      - "8082:80"
+    depends_on:
+      - mysql
+    networks:
+      - laravel_network
+
+volumes:
+  mysql_data:
+
+networks:
+  laravel_network:
+    driver: bridge
